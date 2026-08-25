@@ -5,6 +5,8 @@ version 1 user-mode interface exposed by `radxaplatform.sys`. It provides a
 simple end-user view of performance mode, cooling, temperatures, and live
 power data.
 
+Current release: `1.0.0`.
+
 ## Build
 
 Open `RadxaControlCenter.sln` in Visual Studio 2022 with the ARM64 C++ tools and

@@ -110,6 +110,8 @@
   <ItemGroup>
     <Manifest Include="RadxaControlCenter.manifest" />
     <None Include="README.md" />
+    <None Include="VERSION" />
+    <None Include="LICENSE" />
     <None Include="assets\RadxaLogo.png" />
     <None Include="tools\GenerateIcon.ps1" />
   </ItemGroup>
