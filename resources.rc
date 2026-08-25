@@ -1,0 +1,135 @@
+#pragma code_page(65001)
+
+#include <windows.h>
+#include "resource.h"
+
+IDI_APP_ICON ICON "generated\\RadxaControlCenter.ico"
+
+1 VERSIONINFO
+ FILEVERSION 1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "Radxa Computer Co., Ltd."
+            VALUE "FileDescription", "Radxa Control Center"
+            VALUE "FileVersion", "1.0.0.0"
+            VALUE "InternalName", "RadxaControlCenter"
+            VALUE "LegalCopyright", "Copyright (c) 2026 Radxa Computer Co., Ltd."
+            VALUE "OriginalFilename", "RadxaControlCenter.exe"
+            VALUE "ProductName", "Radxa Control Center"
+            VALUE "ProductVersion", "1.0.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END
+
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE                   "Radxa Control Center"
+    IDS_LANGUAGE                    "Language"
+    IDS_LANGUAGE_CHINESE            "简体中文"
+    IDS_LANGUAGE_ENGLISH            "English"
+    IDS_STATUS_READY                "Your device is ready"
+    IDS_STATUS_CONNECTING           "Connecting to your device"
+    IDS_STATUS_MISSING              "Device support is not installed"
+    IDS_STATUS_UPDATE               "A system update is required"
+    IDS_STATUS_UNAVAILABLE          "The device is temporarily unavailable"
+    IDS_STATUS_READY_DESC           "Performance, cooling, and live sensors are available."
+    IDS_STATUS_CONNECTING_DESC      "This usually takes only a few seconds."
+    IDS_STATUS_MISSING_DESC         "Install the Radxa platform driver, then try again."
+    IDS_STATUS_UPDATE_DESC          "Install the latest Radxa system software to use this app."
+    IDS_STATUS_UNAVAILABLE_DESC     "Check the device and try again in a moment."
+    IDS_RETRY                       "Try again"
+    IDS_PERFORMANCE_MODE            "Performance mode"
+    IDS_QUIET                       "Quiet"
+    IDS_PERFORMANCE                 "Performance"
+    IDS_APPLY                       "Apply"
+    IDS_PROFILE_HINT                "Changing the performance mode returns cooling to automatic."
+    IDS_COOLING                     "Cooling"
+    IDS_AUTOMATIC                   "Automatic"
+    IDS_FULL_SPEED                  "Full speed"
+    IDS_MANUAL                      "Manual"
+    IDS_FAN_SPEED                   "Fan speed"
+    IDS_FAN_HINT                    "Automatic cooling is recommended for everyday use."
+    IDS_TEMPERATURES                "Temperatures"
+    IDS_POWER                       "Live power"
+    IDS_USB_C_1                     "USB-C 1"
+    IDS_USB_C_2                     "USB-C 2"
+    IDS_SYSTEM_TOTAL                "System total"
+    IDS_NOT_AVAILABLE               "This feature is not available on this device."
+    IDS_APPLIED                     "Changes applied"
+    IDS_ACTION_FAILED               "The change could not be applied. Please try again."
+    IDS_CONFIRM_TITLE               "Confirm change"
+    IDS_CONFIRM_PROFILE             "Changing the performance mode will return cooling to automatic. Continue?"
+    IDS_PERCENT_FORMAT              "%d%%"
+    IDS_TEMPERATURE_FORMAT          "%.1f °C"
+    IDS_POWER_FORMAT                "%.2f W"
+    IDS_ELECTRICAL_FORMAT           "%.2f V   %.2f A"
+    IDS_CLOSE_PENDING               "Finishing the current device request..."
+    IDS_CPU                         "CPU"
+    IDS_GPU                         "GPU"
+END
+
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE                   "Radxa 控制中心"
+    IDS_LANGUAGE                    "语言"
+    IDS_LANGUAGE_CHINESE            "简体中文"
+    IDS_LANGUAGE_ENGLISH            "English"
+    IDS_STATUS_READY                "设备已就绪"
+    IDS_STATUS_CONNECTING           "正在连接设备"
+    IDS_STATUS_MISSING              "尚未安装设备支持"
+    IDS_STATUS_UPDATE               "需要更新系统软件"
+    IDS_STATUS_UNAVAILABLE          "设备暂时不可用"
+    IDS_STATUS_READY_DESC           "现在可以调整性能、散热并查看实时传感器。"
+    IDS_STATUS_CONNECTING_DESC      "通常只需要几秒钟。"
+    IDS_STATUS_MISSING_DESC         "请安装 Radxa 平台驱动，然后重试。"
+    IDS_STATUS_UPDATE_DESC          "请安装最新的 Radxa 系统软件后再使用此应用。"
+    IDS_STATUS_UNAVAILABLE_DESC     "请检查设备，稍后再试。"
+    IDS_RETRY                       "重试"
+    IDS_PERFORMANCE_MODE            "性能模式"
+    IDS_QUIET                       "静音"
+    IDS_PERFORMANCE                 "性能"
+    IDS_APPLY                       "应用"
+    IDS_PROFILE_HINT                "切换性能模式时，散热会恢复为自动控制。"
+    IDS_COOLING                     "散热"
+    IDS_AUTOMATIC                   "自动"
+    IDS_FULL_SPEED                  "全速"
+    IDS_MANUAL                      "手动"
+    IDS_FAN_SPEED                   "风扇转速"
+    IDS_FAN_HINT                    "日常使用建议保持自动散热。"
+    IDS_TEMPERATURES                "温度"
+    IDS_POWER                       "实时供电"
+    IDS_USB_C_1                     "USB-C 1"
+    IDS_USB_C_2                     "USB-C 2"
+    IDS_SYSTEM_TOTAL                "系统总计"
+    IDS_NOT_AVAILABLE               "此设备不支持该功能。"
+    IDS_APPLIED                     "设置已应用"
+    IDS_ACTION_FAILED               "无法应用此设置，请重试。"
+    IDS_CONFIRM_TITLE               "确认更改"
+    IDS_CONFIRM_PROFILE             "切换性能模式会将散热恢复为自动控制。是否继续？"
+    IDS_PERCENT_FORMAT              "%d%%"
+    IDS_TEMPERATURE_FORMAT          "%.1f °C"
+    IDS_POWER_FORMAT                "%.2f W"
+    IDS_ELECTRICAL_FORMAT           "%.2f V   %.2f A"
+    IDS_CLOSE_PENDING               "正在完成当前设备请求…"
+    IDS_CPU                         "CPU"
+    IDS_GPU                         "GPU"
+END

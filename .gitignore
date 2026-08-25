@@ -1,0 +1,8 @@
+/bin/
+/obj/
+/generated/
+/.vs/
+*.user
+*.suo
+*.VC.db
+
