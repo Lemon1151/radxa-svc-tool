@@ -3,6 +3,7 @@
 #include "RadxaSvcPublic.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -100,6 +101,51 @@ DeviceWorker::~DeviceWorker()
     Stop();
 }
 
+void DeviceWorker::SetFanCurve(const std::array<FanCurvePoint, 6>& curve)
+{
+    std::lock_guard<std::mutex> lock(curveMutex_);
+    fanCurve_ = curve;
+    curveControlActive_ = false;
+}
+
+std::array<FanCurvePoint, 6> DeviceWorker::GetFanCurve() const
+{
+    std::lock_guard<std::mutex> lock(curveMutex_);
+    return fanCurve_;
+}
+
+std::uint32_t DeviceWorker::InterpolateFanPwm(double temperature) const
+{
+    std::array<FanCurvePoint, 6> curve;
+    {
+        std::lock_guard<std::mutex> lock(curveMutex_);
+        curve = fanCurve_;
+    }
+    if (temperature <= curve.front().Temperature)
+    {
+        return curve.front().Pwm;
+    }
+    if (temperature >= curve.back().Temperature)
+    {
+        return curve.back().Pwm;
+    }
+    for (std::size_t i = 0; i + 1 < curve.size(); ++i)
+    {
+        if (temperature >= curve[i].Temperature &&
+            temperature <= curve[i + 1].Temperature)
+        {
+            const double t0 = curve[i].Temperature;
+            const double t1 = curve[i + 1].Temperature;
+            const double ratio = (temperature - t0) / (t1 - t0);
+            const double pwm = static_cast<double>(curve[i].Pwm) +
+                ratio * (static_cast<double>(curve[i + 1].Pwm) -
+                         static_cast<double>(curve[i].Pwm));
+            return static_cast<std::uint32_t>(pwm + 0.5);
+        }
+    }
+    return curve.back().Pwm;
+}
+
 void DeviceWorker::Start()
 {
     if (!thread_.joinable())
@@ -134,6 +180,11 @@ void DeviceWorker::SetProfile(std::uint32_t profile)
 
 void DeviceWorker::SetFan(std::uint32_t mode, std::uint32_t manualValue)
 {
+    userSelectedMode_ = mode;
+    if (mode != RADXA_SVC_FAN_CONTROL_AUTO)
+    {
+        curveControlActive_ = false;
+    }
     Queue({CommandKind::SetFan, mode, manualValue});
 }
 
@@ -292,6 +343,7 @@ bool DeviceWorker::PollDevice(HANDLE device, bool& sensorsEnumerated)
             snapshot_.FanValid = true;
             snapshot_.FanMode = fan.ControlMode;
             snapshot_.ManualFanValue = fan.ManualPwm;
+            snapshot_.CurrentFanPwm = fan.ManualPwm;
         }
     }
 
@@ -347,6 +399,53 @@ bool DeviceWorker::PollDevice(HANDLE device, bool& sensorsEnumerated)
                 }
             }
         }
+    }
+
+    // 曲线控制：AUTO 模式下按当前曲线自动下发 PWM
+    if (snapshot_.Connection == ConnectionState::Ready &&
+        snapshot_.FanSupported && snapshot_.FanValid &&
+        userSelectedMode_ == RADXA_SVC_FAN_CONTROL_AUTO)
+    {
+        double maxTemp = 0.0;
+        bool hasTemp = false;
+        for (const auto& temperature : snapshot_.Temperatures)
+        {
+            if (temperature.Valid && temperature.Celsius > maxTemp)
+            {
+                maxTemp = temperature.Celsius;
+                hasTemp = true;
+            }
+        }
+        if (hasTemp)
+        {
+            const std::uint32_t targetPwm = InterpolateFanPwm(maxTemp);
+            if (!curveControlActive_ || targetPwm != lastCurvePwm_)
+            {
+                RADXA_SVC_FAN_CONTROL request{};
+                request.Header.Size = sizeof(request);
+                request.Header.Version = RADXA_SVC_USER_API_VERSION;
+                request.ControlMode = RADXA_SVC_FAN_CONTROL_MANUAL;
+                request.ManualPwm = targetPwm;
+                if (WriteIoctl(
+                        device,
+                        IOCTL_RADXA_PLATFORM_SVC_FAN_SET_CONTROL,
+                        request))
+                {
+                    lastCurvePwm_ = targetPwm;
+                    curveControlActive_ = true;
+                }
+            }
+            if (curveControlActive_)
+            {
+                snapshot_.FanMode = RADXA_SVC_FAN_CONTROL_AUTO;
+                snapshot_.ManualFanValue = lastCurvePwm_;
+                snapshot_.CurrentFanPwm = lastCurvePwm_;
+            }
+        }
+    }
+    else if (userSelectedMode_ != RADXA_SVC_FAN_CONTROL_AUTO)
+    {
+        curveControlActive_ = false;
     }
 
     Publish();
