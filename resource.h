@@ -45,6 +45,9 @@
 #define IDS_CLOSE_PENDING               142
 #define IDS_CPU                         143
 #define IDS_GPU                         144
+#define IDS_FAN_CURVE                   145
+#define IDS_FAN_CURVE_HINT              146
+#define IDS_FAN_CURRENT_FORMAT          147
 
 #define IDC_TITLE                       1000
 #define IDC_LANGUAGE                    1001
@@ -62,6 +65,8 @@
 #define IDC_FAN_PERCENT                 1023
 #define IDC_FAN_APPLY                   1024
 #define IDC_FAN_HINT                    1025
+#define IDC_FAN_CURRENT                 1026
+#define IDC_FAN_CUSTOM_HINT             1027
 #define IDC_TEMP_HEADING                1030
 #define IDC_TEMP1_LABEL                 1031
 #define IDC_TEMP1_VALUE                 1032
@@ -78,6 +83,20 @@
 #define IDC_POWER_SYSTEM_VALUE          1048
 #define IDC_POWER_SYSTEM_DETAIL         1049
 #define IDC_NOTICE                      1050
+#define IDC_FAN_CURVE_HEADING           1051
+#define IDC_FAN_CURVE_HINT              1052
+#define IDC_FAN_CURVE_LABEL_1           1060
+#define IDC_FAN_CURVE_EDIT_1            1061
+#define IDC_FAN_CURVE_LABEL_2           1062
+#define IDC_FAN_CURVE_EDIT_2            1063
+#define IDC_FAN_CURVE_LABEL_3           1064
+#define IDC_FAN_CURVE_EDIT_3            1065
+#define IDC_FAN_CURVE_LABEL_4           1066
+#define IDC_FAN_CURVE_EDIT_4            1067
+#define IDC_FAN_CURVE_LABEL_5           1068
+#define IDC_FAN_CURVE_EDIT_5            1069
+#define IDC_FAN_CURVE_LABEL_6           1070
+#define IDC_FAN_CURVE_EDIT_6            1071
 
 #define IDM_LANGUAGE_CHINESE            40001
 #define IDM_LANGUAGE_ENGLISH            40002
