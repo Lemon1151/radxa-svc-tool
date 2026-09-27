@@ -10,6 +10,8 @@
 #include <mutex>
 #include <thread>
 
+#include "RadxaSvcPublic.h"
+
 constexpr UINT WM_APP_DEVICE_UPDATE = WM_APP + 1;
 
 enum class ConnectionState
@@ -44,6 +46,12 @@ struct PowerValue
     double Watts = 0.0;
 };
 
+struct FanCurvePoint
+{
+    double Temperature;
+    std::uint32_t Pwm;
+};
+
 struct DeviceSnapshot
 {
     std::uint64_t Revision = 0;
@@ -57,8 +65,9 @@ struct DeviceSnapshot
 
     bool FanSupported = false;
     bool FanValid = false;
-    std::uint32_t FanMode = 2;
+    std::uint32_t FanMode = RADXA_SVC_FAN_CONTROL_AUTO;
     std::uint32_t ManualFanValue = 0;
+    std::uint32_t CurrentFanPwm = 0;
 
     bool SensorsSupported = false;
     std::array<TemperatureValue, 2> Temperatures{};
@@ -80,7 +89,34 @@ public:
     void Retry();
     void SetProfile(std::uint32_t profile);
     void SetFan(std::uint32_t mode, std::uint32_t manualValue);
+    void SetFanCurve(const std::array<FanCurvePoint, 6>& curve);
+    std::array<FanCurvePoint, 6> GetFanCurve() const;
     DeviceSnapshot GetSnapshot() const;
+
+    // 默认曲线：50/60/70/80/85/90°C → 25/40/55/70/85/100%
+    static constexpr std::array<FanCurvePoint, 6> kDefaultFanCurve = {{
+        {50.0,  64},
+        {60.0, 102},
+        {70.0, 140},
+        {80.0, 179},
+        {85.0, 217},
+        {90.0, 255},
+    }};
+
+    static std::uint32_t PercentToPwm(int percent)
+    {
+        if (percent < 0) percent = 0;
+        if (percent > 100) percent = 100;
+        return static_cast<std::uint32_t>(
+            (percent * static_cast<int>(RADXA_SVC_FAN_PWM_MAX) + 50) / 100);
+    }
+
+    static int PwmToPercent(std::uint32_t pwm)
+    {
+        if (pwm > RADXA_SVC_FAN_PWM_MAX) pwm = RADXA_SVC_FAN_PWM_MAX;
+        return static_cast<int>(
+            (pwm * 100u + (RADXA_SVC_FAN_PWM_MAX / 2u)) / RADXA_SVC_FAN_PWM_MAX);
+    }
 
 private:
     enum class CommandKind
@@ -104,6 +140,7 @@ private:
     bool OpenDevice(HANDLE& device);
     bool PollDevice(HANDLE device, bool& sensorsEnumerated);
     bool ExecuteCommand(HANDLE device, const Command& command, bool& sensorsEnumerated);
+    std::uint32_t InterpolateFanPwm(double temperature) const;
 
     HWND notificationWindow_ = nullptr;
     mutable std::mutex snapshotMutex_;
@@ -115,4 +152,10 @@ private:
     std::deque<Command> commands_;
     bool stopping_ = false;
     std::thread thread_;
+
+    mutable std::mutex curveMutex_;
+    std::array<FanCurvePoint, 6> fanCurve_ = kDefaultFanCurve;
+    std::uint32_t userSelectedMode_ = RADXA_SVC_FAN_CONTROL_AUTO;
+    std::uint32_t lastCurvePwm_ = 0;
+    bool curveControlActive_ = false;
 };
