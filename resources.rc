@@ -6,8 +6,8 @@
 IDI_APP_ICON ICON "generated\\RadxaControlCenter.ico"
 
 1 VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION 1,0,1,0
+ PRODUCTVERSION 1,0,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -24,12 +24,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "Radxa Computer Co., Ltd."
             VALUE "FileDescription", "Radxa Control Center"
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileVersion", "1.0.1.0"
             VALUE "InternalName", "RadxaControlCenter"
             VALUE "LegalCopyright", "Copyright (c) 2026 Radxa Computer Co., Ltd."
             VALUE "OriginalFilename", "RadxaControlCenter.exe"
             VALUE "ProductName", "Radxa Control Center"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "ProductVersion", "1.0.1.0"
         END
     END
     BLOCK "VarFileInfo"
@@ -64,7 +64,7 @@ BEGIN
     IDS_COOLING                     "Cooling"
     IDS_AUTOMATIC                   "Automatic"
     IDS_FULL_SPEED                  "Full speed"
-    IDS_MANUAL                      "Manual"
+    IDS_MANUAL                      "Custom"
     IDS_FAN_SPEED                   "Fan speed"
     IDS_FAN_HINT                    "Automatic cooling is recommended for everyday use."
     IDS_TEMPERATURES                "Temperatures"
@@ -84,6 +84,9 @@ BEGIN
     IDS_CLOSE_PENDING               "Finishing the current device request..."
     IDS_CPU                         "CPU"
     IDS_GPU                         "GPU"
+    IDS_FAN_CURVE                   "Fan Speed Curve"
+    IDS_FAN_CURVE_HINT              "In automatic mode, fan speed follows this temperature-to-speed curve."
+    IDS_FAN_CURRENT_FORMAT          "Current: %d%%"
 END
 
 LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
@@ -112,7 +115,7 @@ BEGIN
     IDS_COOLING                     "散热"
     IDS_AUTOMATIC                   "自动"
     IDS_FULL_SPEED                  "全速"
-    IDS_MANUAL                      "手动"
+    IDS_MANUAL                      "自定义"
     IDS_FAN_SPEED                   "风扇转速"
     IDS_FAN_HINT                    "日常使用建议保持自动散热。"
     IDS_TEMPERATURES                "温度"
@@ -132,4 +135,7 @@ BEGIN
     IDS_CLOSE_PENDING               "正在完成当前设备请求…"
     IDS_CPU                         "CPU"
     IDS_GPU                         "GPU"
+    IDS_FAN_CURVE                   "风扇调速曲线"
+    IDS_FAN_CURVE_HINT              "自动模式下，风扇转速将按照此温度-转速曲线自动调节。"
+    IDS_FAN_CURRENT_FORMAT          "当前转速：%d%%"
 END
