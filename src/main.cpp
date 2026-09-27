@@ -36,6 +36,25 @@ constexpr COLORREF kSuccess = RGB(25, 135, 84);
 constexpr COLORREF kWarning = RGB(185, 112, 20);
 constexpr COLORREF kDanger = RGB(190, 53, 53);
 
+constexpr COLORREF kCurveGrid = RGB(228, 231, 236);
+constexpr COLORREF kCurveAxis = RGB(180, 186, 196);
+
+constexpr std::array<double, 6> kCurveTemperatures = {50.0, 60.0, 70.0, 80.0, 85.0, 90.0};
+constexpr std::array<int, 6> kDefaultCurvePercents = {25, 40, 55, 70, 85, 100};
+
+constexpr std::array<const wchar_t*, 6> kCurveValueNames = {
+    L"FanCurve50", L"FanCurve60", L"FanCurve70",
+    L"FanCurve80", L"FanCurve85", L"FanCurve90",
+};
+
+constexpr std::array<int, 6> kCurveEditIds = {
+    IDC_FAN_CURVE_EDIT_1, IDC_FAN_CURVE_EDIT_2, IDC_FAN_CURVE_EDIT_3,
+    IDC_FAN_CURVE_EDIT_4, IDC_FAN_CURVE_EDIT_5, IDC_FAN_CURVE_EDIT_6};
+
+constexpr std::array<int, 6> kCurveLabelIds = {
+    IDC_FAN_CURVE_LABEL_1, IDC_FAN_CURVE_LABEL_2, IDC_FAN_CURVE_LABEL_3,
+    IDC_FAN_CURVE_LABEL_4, IDC_FAN_CURVE_LABEL_5, IDC_FAN_CURVE_LABEL_6};
+
 bool IsChineseSystemLanguage()
 {
     return PRIMARYLANGID(GetUserDefaultUILanguage()) == LANG_CHINESE;
@@ -86,6 +105,43 @@ void SaveLanguagePreference(LANGID language)
     }
 }
 
+std::array<int, 6> LoadCustomCurvePercents()
+{
+    std::array<int, 6> percents = kDefaultCurvePercents;
+    for (int i = 0; i < 6; ++i)
+    {
+        DWORD value = 0;
+        DWORD size = sizeof(value);
+        if (RegGetValueW(
+                HKEY_CURRENT_USER, kSettingsKey, kCurveValueNames[i],
+                RRF_RT_REG_DWORD, nullptr, &value, &size) == ERROR_SUCCESS &&
+            value <= 100)
+        {
+            percents[i] = static_cast<int>(value);
+        }
+    }
+    return percents;
+}
+
+void SaveCustomCurvePercents(const std::array<int, 6>& percents)
+{
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(
+            HKEY_CURRENT_USER, kSettingsKey, 0, nullptr, 0,
+            KEY_SET_VALUE, nullptr, &key, nullptr) == ERROR_SUCCESS)
+    {
+        for (int i = 0; i < 6; ++i)
+        {
+            const DWORD value = static_cast<DWORD>(
+                std::clamp(percents[i], 0, 100));
+            RegSetValueExW(
+                key, kCurveValueNames[i], 0, REG_DWORD,
+                reinterpret_cast<const BYTE*>(&value), sizeof(value));
+        }
+        RegCloseKey(key);
+    }
+}
+
 std::wstring LoadLocalizedString(HINSTANCE instance, UINT id, LANGID language)
 {
     const UINT block = (id / 16) + 1;
@@ -100,7 +156,6 @@ std::wstring LoadLocalizedString(HINSTANCE instance, UINT id, LANGID language)
     {
         return {};
     }
-
     HGLOBAL data = LoadResource(instance, resource);
     if (data == nullptr)
     {
@@ -131,6 +186,7 @@ bool IsCardStaticControl(int id)
     case IDC_FAN_HEADING:
     case IDC_FAN_PERCENT:
     case IDC_FAN_HINT:
+    case IDC_FAN_CURRENT:
     case IDC_TEMP1_LABEL:
     case IDC_TEMP1_VALUE:
     case IDC_TEMP2_LABEL:
@@ -144,6 +200,13 @@ bool IsCardStaticControl(int id)
     case IDC_POWER_SYSTEM_LABEL:
     case IDC_POWER_SYSTEM_VALUE:
     case IDC_POWER_SYSTEM_DETAIL:
+    case IDC_FAN_CURVE_HINT:
+    case IDC_FAN_CURVE_LABEL_1:
+    case IDC_FAN_CURVE_LABEL_2:
+    case IDC_FAN_CURVE_LABEL_3:
+    case IDC_FAN_CURVE_LABEL_4:
+    case IDC_FAN_CURVE_LABEL_5:
+    case IDC_FAN_CURVE_LABEL_6:
         return true;
     default:
         return false;
@@ -233,6 +296,7 @@ public:
     {
         instance_ = instance;
         language_ = LoadLanguagePreference();
+        customPercents_ = LoadCustomCurvePercents();
 
         WNDCLASSEXW windowClass{sizeof(windowClass)};
         windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -251,7 +315,7 @@ public:
         }
 
         const UINT initialDpi = GetDpiForSystem();
-        RECT windowRect{0, 0, MulDiv(940, initialDpi, 96), MulDiv(740, initialDpi, 96)};
+        RECT windowRect{0, 0, MulDiv(940, initialDpi, 96), MulDiv(940, initialDpi, 96)};
         AdjustWindowRectExForDpi(
             &windowRect,
             WS_OVERLAPPEDWINDOW | WS_VSCROLL,
@@ -273,14 +337,8 @@ public:
             kWindowClass,
             Localize(IDS_APP_TITLE).c_str(),
             WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_CLIPCHILDREN,
-            x,
-            y,
-            width,
-            height,
-            nullptr,
-            nullptr,
-            instance_,
-            this);
+            x, y, width, height,
+            nullptr, nullptr, instance_, this);
         if (window_ == nullptr)
         {
             return 2;
@@ -310,10 +368,7 @@ public:
 
 private:
     static LRESULT CALLBACK WindowProcedure(
-        HWND window,
-        UINT message,
-        WPARAM wParam,
-        LPARAM lParam)
+        HWND window, UINT message, WPARAM wParam, LPARAM lParam)
     {
         Application* app = reinterpret_cast<Application*>(
             GetWindowLongPtrW(window, GWLP_USERDATA));
@@ -339,20 +394,14 @@ private:
     }
 
     HWND AddControl(
-        LPCWSTR className,
-        DWORD style,
-        int id,
-        DWORD extendedStyle = 0)
+        LPCWSTR className, DWORD style, int id, DWORD extendedStyle = 0)
     {
         HWND control = CreateWindowExW(
             extendedStyle,
             className,
             L"",
             WS_CHILD | WS_VISIBLE | style,
-            0,
-            0,
-            10,
-            10,
+            0, 0, 10, 10,
             window_,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)),
             instance_,
@@ -380,10 +429,24 @@ private:
 
         AddControl(L"STATIC", SS_LEFT, IDC_FAN_HEADING);
         AddControl(WC_COMBOBOXW, CBS_DROPDOWNLIST | CBS_HASSTRINGS | WS_TABSTOP, IDC_FAN_MODE);
+        AddControl(L"STATIC", SS_RIGHT, IDC_FAN_CURRENT);
         AddControl(TRACKBAR_CLASSW, TBS_HORZ | TBS_NOTICKS | WS_TABSTOP, IDC_FAN_SLIDER);
         AddControl(L"STATIC", SS_RIGHT, IDC_FAN_PERCENT);
         AddControl(L"BUTTON", BS_DEFPUSHBUTTON | WS_TABSTOP, IDC_FAN_APPLY);
         AddControl(L"STATIC", SS_LEFT, IDC_FAN_HINT);
+
+        // 自定义曲线的 6 组标签和编辑框
+        for (int i = 0; i < 6; ++i)
+        {
+            AddControl(L"STATIC", SS_LEFT | SS_CENTERIMAGE, kCurveLabelIds[i]);
+            AddControl(
+                L"EDIT",
+                ES_NUMBER | ES_RIGHT | ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP,
+                kCurveEditIds[i]);
+        }
+
+        AddControl(L"STATIC", SS_LEFT, IDC_FAN_CURVE_HEADING);
+        AddControl(L"STATIC", SS_LEFT, IDC_FAN_CURVE_HINT);
 
         AddControl(L"STATIC", SS_LEFT, IDC_TEMP_HEADING);
         AddControl(L"STATIC", SS_LEFT, IDC_TEMP1_LABEL);
@@ -405,7 +468,15 @@ private:
 
         SendDlgItemMessageW(window_, IDC_FAN_SLIDER, TBM_SETRANGE, TRUE, MAKELPARAM(0, 100));
         SendDlgItemMessageW(window_, IDC_FAN_SLIDER, TBM_SETPAGESIZE, 0, 10);
-        SendDlgItemMessageW(window_, IDC_FAN_SLIDER, TBM_SETPOS, TRUE, 50);
+        SendDlgItemMessageW(window_, IDC_FAN_SLIDER, TBM_SETPOS, TRUE, 15);
+
+        // 初始化曲线编辑框
+        for (int i = 0; i < 6; ++i)
+        {
+            wchar_t buffer[16]{};
+            _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"%d", customPercents_[i]);
+            SetDlgItemTextW(window_, kCurveEditIds[i], buffer);
+        }
 
         backgroundBrush_ = CreateSolidBrush(kBackground);
         cardBrush_ = CreateSolidBrush(kCard);
@@ -421,6 +492,8 @@ private:
             sizeof(roundPreference));
 
         worker_ = std::make_unique<DeviceWorker>(window_);
+        // 把注册表里保存的自定义曲线加载到 worker
+        worker_->SetFanCurve(BuildCurveFromPercents(customPercents_));
         worker_->Start();
     }
 
@@ -428,40 +501,19 @@ private:
     {
         for (HFONT& font : fonts_)
         {
-            if (font != nullptr)
-            {
-                DeleteObject(font);
-                font = nullptr;
-            }
+            if (font != nullptr) { DeleteObject(font); font = nullptr; }
         }
-        if (backgroundBrush_ != nullptr)
-        {
-            DeleteObject(backgroundBrush_);
-            backgroundBrush_ = nullptr;
-        }
-        if (cardBrush_ != nullptr)
-        {
-            DeleteObject(cardBrush_);
-            cardBrush_ = nullptr;
-        }
+        if (backgroundBrush_ != nullptr) { DeleteObject(backgroundBrush_); backgroundBrush_ = nullptr; }
+        if (cardBrush_ != nullptr) { DeleteObject(cardBrush_); cardBrush_ = nullptr; }
     }
 
     HFONT MakeFont(int pointSize, int weight)
     {
         return CreateFontW(
             -MulDiv(pointSize, static_cast<int>(dpi_), 72),
-            0,
-            0,
-            0,
-            weight,
-            FALSE,
-            FALSE,
-            FALSE,
-            DEFAULT_CHARSET,
-            OUT_DEFAULT_PRECIS,
-            CLIP_DEFAULT_PRECIS,
-            CLEARTYPE_QUALITY,
-            DEFAULT_PITCH | FF_DONTCARE,
+            0, 0, 0, weight, FALSE, FALSE, FALSE,
+            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+            CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
             PreferredFontFace());
     }
 
@@ -475,10 +527,7 @@ private:
         dpi_ = newDpi == 0 ? 96 : newDpi;
         for (HFONT& font : fonts_)
         {
-            if (font != nullptr)
-            {
-                DeleteObject(font);
-            }
+            if (font != nullptr) DeleteObject(font);
         }
         fonts_[0] = MakeFont(22, FW_SEMIBOLD);
         fonts_[1] = MakeFont(13, FW_SEMIBOLD);
@@ -488,7 +537,7 @@ private:
 
         AssignFont(IDC_TITLE, fonts_[0]);
         for (int id : {IDC_STATUS_TITLE, IDC_PROFILE_HEADING, IDC_FAN_HEADING,
-                 IDC_TEMP_HEADING, IDC_POWER_HEADING})
+                 IDC_TEMP_HEADING, IDC_POWER_HEADING, IDC_FAN_CURVE_HEADING})
         {
             AssignFont(id, fonts_[1]);
         }
@@ -498,18 +547,22 @@ private:
             AssignFont(id, fonts_[3]);
         }
         for (int id : {IDC_PROFILE_HINT, IDC_FAN_HINT, IDC_POWER1_DETAIL,
-                 IDC_POWER2_DETAIL, IDC_POWER_SYSTEM_DETAIL, IDC_NOTICE})
+                 IDC_POWER2_DETAIL, IDC_POWER_SYSTEM_DETAIL, IDC_NOTICE,
+                 IDC_FAN_CURVE_HINT})
         {
             AssignFont(id, fonts_[4]);
         }
         for (int id : {IDC_LANGUAGE, IDC_STATUS_DESC, IDC_RETRY,
                  IDC_PROFILE_QUIET, IDC_PROFILE_PERFORMANCE, IDC_PROFILE_APPLY,
-                 IDC_FAN_MODE, IDC_FAN_PERCENT, IDC_FAN_APPLY,
+                 IDC_FAN_MODE, IDC_FAN_PERCENT, IDC_FAN_APPLY, IDC_FAN_CURRENT,
                  IDC_TEMP1_LABEL, IDC_TEMP2_LABEL, IDC_POWER1_LABEL,
                  IDC_POWER2_LABEL, IDC_POWER_SYSTEM_LABEL})
         {
             AssignFont(id, fonts_[2]);
         }
+        for (int id : kCurveEditIds) AssignFont(id, fonts_[2]);
+        for (int id : kCurveLabelIds) AssignFont(id, fonts_[2]);
+
         LayoutControls();
     }
 
@@ -525,6 +578,8 @@ private:
         SetControlText(window_, IDC_PROFILE_APPLY, Localize(IDS_APPLY));
         SetControlText(window_, IDC_FAN_HEADING, Localize(IDS_COOLING));
         SetControlText(window_, IDC_FAN_APPLY, Localize(IDS_APPLY));
+        SetControlText(window_, IDC_FAN_CURVE_HEADING, Localize(IDS_FAN_CURVE));
+        SetControlText(window_, IDC_FAN_CURVE_HINT, Localize(IDS_FAN_CURVE_HINT));
         SetControlText(window_, IDC_TEMP_HEADING, Localize(IDS_TEMPERATURES));
         SetControlText(window_, IDC_POWER_HEADING, Localize(IDS_POWER));
         SetControlText(window_, IDC_TEMP1_LABEL, Localize(IDS_CPU));
@@ -532,6 +587,15 @@ private:
         SetControlText(window_, IDC_POWER1_LABEL, Localize(IDS_USB_C_1));
         SetControlText(window_, IDC_POWER2_LABEL, Localize(IDS_USB_C_2));
         SetControlText(window_, IDC_POWER_SYSTEM_LABEL, Localize(IDS_SYSTEM_TOTAL));
+
+        // 更新曲线标签（50°C、60°C...）
+        for (int i = 0; i < 6; ++i)
+        {
+            wchar_t buffer[16]{};
+            _snwprintf_s(buffer, _countof(buffer), _TRUNCATE,
+                         L"%d°C", static_cast<int>(kCurveTemperatures[i]));
+            SetControlText(window_, kCurveLabelIds[i], buffer);
+        }
 
         HWND combo = GetDlgItem(window_, IDC_FAN_MODE);
         const int previous = static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0));
@@ -549,19 +613,14 @@ private:
     void ShowLanguageMenu()
     {
         HMENU menu = CreatePopupMenu();
-        AppendMenuW(
-            menu,
-            MF_STRING | (language_ == kChinese ? MF_CHECKED : 0),
-            IDM_LANGUAGE_CHINESE,
-            Localize(IDS_LANGUAGE_CHINESE).c_str());
-        AppendMenuW(
-            menu,
-            MF_STRING | (language_ == kEnglish ? MF_CHECKED : 0),
-            IDM_LANGUAGE_ENGLISH,
-            Localize(IDS_LANGUAGE_ENGLISH).c_str());
+        AppendMenuW(menu, MF_STRING | (language_ == kChinese ? MF_CHECKED : 0),
+                    IDM_LANGUAGE_CHINESE, Localize(IDS_LANGUAGE_CHINESE).c_str());
+        AppendMenuW(menu, MF_STRING | (language_ == kEnglish ? MF_CHECKED : 0),
+                    IDM_LANGUAGE_ENGLISH, Localize(IDS_LANGUAGE_ENGLISH).c_str());
         RECT rect{};
         GetWindowRect(GetDlgItem(window_, IDC_LANGUAGE), &rect);
-        TrackPopupMenu(menu, TPM_RIGHTALIGN | TPM_TOPALIGN, rect.right, rect.bottom, 0, window_, nullptr);
+        TrackPopupMenu(menu, TPM_RIGHTALIGN | TPM_TOPALIGN,
+                       rect.right, rect.bottom, 0, window_, nullptr);
         DestroyMenu(menu);
     }
 
@@ -577,8 +636,7 @@ private:
     {
         const std::wstring format = Localize(id);
         wchar_t buffer[128]{};
-        _snwprintf_s(
-            buffer, _countof(buffer), _TRUNCATE, format.c_str(), first, second);
+        _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, format.c_str(), first, second);
         return buffer;
     }
 
@@ -590,38 +648,78 @@ private:
         return buffer;
     }
 
+    std::wstring FormatCurrent(int value) const
+    {
+        const std::wstring format = Localize(IDS_FAN_CURRENT_FORMAT);
+        wchar_t buffer[32]{};
+        _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, format.c_str(), value);
+        return buffer;
+    }
+
     static int FanModeToCombo(std::uint32_t mode)
     {
-        if (mode == RADXA_SVC_FAN_CONTROL_FULL_SPEED)
-        {
-            return 1;
-        }
-        if (mode == RADXA_SVC_FAN_CONTROL_MANUAL)
-        {
-            return 2;
-        }
+        if (mode == RADXA_SVC_FAN_CONTROL_FULL_SPEED) return 1;
+        if (mode == RADXA_SVC_FAN_CONTROL_MANUAL) return 2;
         return 0;
     }
 
     static std::uint32_t ComboToFanMode(int selection)
     {
-        if (selection == 1)
-        {
-            return RADXA_SVC_FAN_CONTROL_FULL_SPEED;
-        }
-        if (selection == 2)
-        {
-            return RADXA_SVC_FAN_CONTROL_MANUAL;
-        }
+        if (selection == 1) return RADXA_SVC_FAN_CONTROL_FULL_SPEED;
+        if (selection == 2) return RADXA_SVC_FAN_CONTROL_MANUAL;
         return RADXA_SVC_FAN_CONTROL_AUTO;
+    }
+
+    // 读取编辑框的 6 个百分比
+    std::array<int, 6> ReadCurveEditors() const
+    {
+        std::array<int, 6> percents = kDefaultCurvePercents;
+        for (int i = 0; i < 6; ++i)
+        {
+            wchar_t buffer[16]{};
+            GetDlgItemTextW(window_, kCurveEditIds[i], buffer, _countof(buffer));
+            int value = _wtoi(buffer);
+            if (value < 0) value = 0;
+            if (value > 100) value = 100;
+            percents[i] = value;
+        }
+        return percents;
+    }
+
+    std::array<FanCurvePoint, 6> BuildCurveFromPercents(
+        const std::array<int, 6>& percents) const
+    {
+        std::array<FanCurvePoint, 6> curve{};
+        for (int i = 0; i < 6; ++i)
+        {
+            curve[i].Temperature = kCurveTemperatures[i];
+            curve[i].Pwm = DeviceWorker::PercentToPwm(percents[i]);
+        }
+        return curve;
+    }
+
+    // 当前曲线图应该显示的百分比
+    std::array<int, 6> GetDisplayedPercents() const
+    {
+        if (window_ == nullptr) return kDefaultCurvePercents;
+        const int selection = static_cast<int>(
+            SendDlgItemMessageW(window_, IDC_FAN_MODE, CB_GETCURSEL, 0, 0));
+        if (selection == 2)  // 自定义
+        {
+            return ReadCurveEditors();
+        }
+        // 自动 / 全速 → 显示默认曲线
+        std::array<int, 6> percents{};
+        for (int i = 0; i < 6; ++i)
+        {
+            percents[i] = DeviceWorker::PwmToPercent(DeviceWorker::kDefaultFanCurve[i].Pwm);
+        }
+        return percents;
     }
 
     void ApplySnapshot()
     {
-        if (window_ == nullptr)
-        {
-            return;
-        }
+        if (window_ == nullptr) return;
         if (worker_ != nullptr)
         {
             snapshot_ = worker_->GetSnapshot();
@@ -658,9 +756,8 @@ private:
         }
         SetControlText(window_, IDC_STATUS_TITLE, Localize(statusTitle));
         SetControlText(window_, IDC_STATUS_DESC, Localize(statusDescription));
-        SetControlVisible(
-            GetDlgItem(window_, IDC_RETRY),
-            snapshot_.Connection != ConnectionState::Ready);
+        SetControlVisible(GetDlgItem(window_, IDC_RETRY),
+                          snapshot_.Connection != ConnectionState::Ready);
 
         const bool ready = snapshot_.Connection == ConnectionState::Ready;
         const bool profileEnabled = ready && snapshot_.ProfileSupported && !snapshot_.Busy;
@@ -668,18 +765,14 @@ private:
         {
             SetControlEnabled(GetDlgItem(window_, id), profileEnabled);
         }
-        SetControlText(
-            window_,
-            IDC_PROFILE_HINT,
+        SetControlText(window_, IDC_PROFILE_HINT,
             ready && !snapshot_.ProfileSupported ? Localize(IDS_NOT_AVAILABLE) :
                                                    Localize(IDS_PROFILE_HINT));
         if (!profileDirty_ && snapshot_.ProfileValid)
         {
             const int desired =
-                snapshot_.EffectiveProfile == RADXA_SVC_PROFILE_QUIET ?
-                    IDC_PROFILE_QUIET :
-                    snapshot_.EffectiveProfile == RADXA_SVC_PROFILE_PERFORMANCE ?
-                        IDC_PROFILE_PERFORMANCE : 0;
+                snapshot_.EffectiveProfile == RADXA_SVC_PROFILE_QUIET ? IDC_PROFILE_QUIET :
+                snapshot_.EffectiveProfile == RADXA_SVC_PROFILE_PERFORMANCE ? IDC_PROFILE_PERFORMANCE : 0;
             const bool quietChecked =
                 IsDlgButtonChecked(window_, IDC_PROFILE_QUIET) == BST_CHECKED;
             const bool performanceChecked =
@@ -688,69 +781,68 @@ private:
                 (desired == IDC_PROFILE_PERFORMANCE && !performanceChecked) ||
                 (desired == 0 && (quietChecked || performanceChecked)))
             {
-                CheckDlgButton(
-                    window_, IDC_PROFILE_QUIET,
+                CheckDlgButton(window_, IDC_PROFILE_QUIET,
                     desired == IDC_PROFILE_QUIET ? BST_CHECKED : BST_UNCHECKED);
-                CheckDlgButton(
-                    window_, IDC_PROFILE_PERFORMANCE,
+                CheckDlgButton(window_, IDC_PROFILE_PERFORMANCE,
                     desired == IDC_PROFILE_PERFORMANCE ? BST_CHECKED : BST_UNCHECKED);
             }
         }
 
         const bool fanEnabled = ready && snapshot_.FanSupported && !snapshot_.Busy;
         SetControlEnabled(GetDlgItem(window_, IDC_FAN_MODE), fanEnabled);
-        SetControlEnabled(GetDlgItem(window_, IDC_FAN_SLIDER), fanEnabled);
         SetControlEnabled(GetDlgItem(window_, IDC_FAN_APPLY), fanEnabled);
-        SetControlText(
-            window_,
-            IDC_FAN_HINT,
+        SetControlText(window_, IDC_FAN_HINT,
             ready && !snapshot_.FanSupported ? Localize(IDS_NOT_AVAILABLE) :
                                                Localize(IDS_FAN_HINT));
+
+        // 当前转速显示
+        int currentPwm = static_cast<int>(snapshot_.CurrentFanPwm);
+        if (currentPwm < 0) currentPwm = 0;
+        if (currentPwm > static_cast<int>(RADXA_SVC_FAN_PWM_MAX))
+            currentPwm = static_cast<int>(RADXA_SVC_FAN_PWM_MAX);
+        const int currentPercent = DeviceWorker::PwmToPercent(
+            static_cast<std::uint32_t>(currentPwm));
+        SetControlText(window_, IDC_FAN_CURRENT, FormatCurrent(currentPercent));
+
+        // 下拉框
         const bool fanComboIsOpen = fanComboDropped_ ||
-            SendDlgItemMessageW(
-                window_, IDC_FAN_MODE, CB_GETDROPPEDSTATE, 0, 0) != FALSE;
+            SendDlgItemMessageW(window_, IDC_FAN_MODE, CB_GETDROPPEDSTATE, 0, 0) != FALSE;
         if (!fanDirty_ && !fanComboIsOpen && snapshot_.FanValid)
         {
             const int desiredMode = FanModeToCombo(snapshot_.FanMode);
-            if (SendDlgItemMessageW(
-                    window_, IDC_FAN_MODE, CB_GETCURSEL, 0, 0) != desiredMode)
+            if (SendDlgItemMessageW(window_, IDC_FAN_MODE, CB_GETCURSEL, 0, 0) != desiredMode)
             {
-                SendDlgItemMessageW(
-                    window_, IDC_FAN_MODE, CB_SETCURSEL, desiredMode, 0);
-            }
-            const int percent = static_cast<int>(
-                (snapshot_.ManualFanValue * 100u + (RADXA_SVC_FAN_PWM_MAX / 2u)) /
-                RADXA_SVC_FAN_PWM_MAX);
-            if (SendDlgItemMessageW(
-                    window_, IDC_FAN_SLIDER, TBM_GETPOS, 0, 0) != percent)
-            {
-                SendDlgItemMessageW(
-                    window_, IDC_FAN_SLIDER, TBM_SETPOS, TRUE, percent);
+                SendDlgItemMessageW(window_, IDC_FAN_MODE, CB_SETCURSEL, desiredMode, 0);
             }
         }
 
+        // 模式切换时的可见性
         bool manualVisibilityChanged = false;
         if (!fanComboIsOpen)
         {
             const int fanSelection = static_cast<int>(
                 SendDlgItemMessageW(window_, IDC_FAN_MODE, CB_GETCURSEL, 0, 0));
-            const bool showManual = fanSelection == 2;
+            const bool showManual = (fanSelection == 2);  // 自定义
             manualVisibilityChanged = showManual != manualControlsVisible_;
             manualControlsVisible_ = showManual;
-            SetControlVisible(GetDlgItem(window_, IDC_FAN_SLIDER), showManual);
-            SetControlVisible(GetDlgItem(window_, IDC_FAN_PERCENT), showManual);
+
+            // 旧的滑块和百分比：自定义模式下不再使用，隐藏
+            SetControlVisible(GetDlgItem(window_, IDC_FAN_SLIDER), false);
+            SetControlVisible(GetDlgItem(window_, IDC_FAN_PERCENT), false);
+
+            // 曲线编辑框和标签：只在自定义模式显示
+            for (int i = 0; i < 6; ++i)
+            {
+                SetControlVisible(GetDlgItem(window_, kCurveLabelIds[i]), showManual);
+                SetControlVisible(GetDlgItem(window_, kCurveEditIds[i]), showManual);
+            }
         }
-        const int percent = static_cast<int>(
-            SendDlgItemMessageW(window_, IDC_FAN_SLIDER, TBM_GETPOS, 0, 0));
-        SetControlText(window_, IDC_FAN_PERCENT, FormatPercent(percent));
 
         const std::wstring dash = L"—";
-        SetControlText(
-            window_, IDC_TEMP1_VALUE,
+        SetControlText(window_, IDC_TEMP1_VALUE,
             snapshot_.Temperatures[0].Valid ?
                 FormatOne(IDS_TEMPERATURE_FORMAT, snapshot_.Temperatures[0].Celsius) : dash);
-        SetControlText(
-            window_, IDC_TEMP2_VALUE,
+        SetControlText(window_, IDC_TEMP2_VALUE,
             snapshot_.Temperatures[1].Valid ?
                 FormatOne(IDS_TEMPERATURE_FORMAT, snapshot_.Temperatures[1].Celsius) : dash);
         UpdatePowerCard(IDC_POWER1_VALUE, IDC_POWER1_DETAIL, snapshot_.UsbPower[0]);
@@ -772,24 +864,17 @@ private:
             SetControlText(window_, IDC_NOTICE, L"");
         }
 
-        if (manualVisibilityChanged)
-        {
-            LayoutControls();
-        }
+        if (manualVisibilityChanged) LayoutControls();
         if (previousStatusColor != statusColor_)
-        {
             InvalidateRect(window_, &statusCard_, FALSE);
-        }
     }
 
     void UpdatePowerCard(int valueId, int detailId, const PowerValue& power)
     {
         const std::wstring dash = L"—";
-        SetControlText(
-            window_, valueId,
+        SetControlText(window_, valueId,
             power.PowerValid ? FormatOne(IDS_POWER_FORMAT, power.Watts) : dash);
-        SetControlText(
-            window_, detailId,
+        SetControlText(window_, detailId,
             power.VoltageValid && power.CurrentValid ?
                 FormatTwo(IDS_ELECTRICAL_FORMAT, power.Volts, power.Amps) : L"");
     }
@@ -825,7 +910,9 @@ private:
         Move(IDC_RETRY, clientWidth - margin - inner - Scale(112), y + Scale(24), Scale(112), Scale(36));
         y += Scale(88) + gap;
 
-        const int panelHeight = Scale(188);
+        // 根据当前模式决定散热卡片高度
+        const bool customMode = manualControlsVisible_;
+        const int panelHeight = customMode ? Scale(280) : Scale(188);
         const int panelWidth = twoColumns ? (available - gap) / 2 : available;
         profileCard_ = {margin, y - scrollPosition_, margin + panelWidth, y + panelHeight - scrollPosition_};
         LayoutProfileCard(margin, y, panelWidth, panelHeight, inner);
@@ -835,6 +922,16 @@ private:
         fanCard_ = {fanX, fanY - scrollPosition_, fanX + panelWidth, fanY + panelHeight - scrollPosition_};
         LayoutFanCard(fanX, fanY, panelWidth, panelHeight, inner);
         y = (twoColumns ? y : fanY) + panelHeight + Scale(24);
+
+        // 曲线图卡片
+        Move(IDC_FAN_CURVE_HEADING, margin, y, available, Scale(28));
+        y += Scale(36);
+        const int curveHeight = Scale(260);
+        curveCard_ = {margin, y - scrollPosition_, margin + available, y + curveHeight - scrollPosition_};
+        Move(IDC_FAN_CURVE_HINT,
+             margin + inner, y + curveHeight - Scale(34),
+             available - inner * 2, Scale(24));
+        y += curveHeight + Scale(24);
 
         Move(IDC_TEMP_HEADING, margin, y, available, Scale(28));
         y += Scale(36);
@@ -864,9 +961,8 @@ private:
         {
             const int x = margin + (index % powerColumns) * (powerWidth + gap);
             const int cardY = y + (index / powerColumns) * (Scale(116) + gap);
-            powerCards_[index] = {
-                x, cardY - scrollPosition_, x + powerWidth,
-                cardY + Scale(116) - scrollPosition_};
+            powerCards_[index] = {x, cardY - scrollPosition_, x + powerWidth,
+                                  cardY + Scale(116) - scrollPosition_};
             Move(labels[index], x + inner, cardY + Scale(13), powerWidth - inner * 2, Scale(22));
             Move(values[index], x + inner, cardY + Scale(39), powerWidth - inner * 2, Scale(36));
             Move(details[index], x + inner, cardY + Scale(82), powerWidth - inner * 2, Scale(20));
@@ -903,23 +999,45 @@ private:
         Move(IDC_PROFILE_HINT, x + inner, y + Scale(139), width - inner * 2, Scale(36));
     }
 
-    void LayoutFanCard(int x, int y, int width, int, int inner)
+    void LayoutFanCard(int x, int y, int width, int height, int inner)
     {
         Move(IDC_FAN_HEADING, x + inner, y + Scale(14), width - inner * 2, Scale(25));
         Move(IDC_FAN_MODE, x + inner, y + Scale(48), Scale(154), Scale(200));
-        Move(IDC_FAN_SLIDER, x + inner + Scale(166), y + Scale(49),
-            std::max(Scale(80), width - inner * 2 - Scale(218)), Scale(28));
-        Move(IDC_FAN_PERCENT, x + width - inner - Scale(44), y + Scale(51), Scale(44), Scale(24));
-        Move(IDC_FAN_APPLY, x + inner, y + Scale(92), Scale(104), Scale(34));
-        Move(IDC_FAN_HINT, x + inner, y + Scale(139), width - inner * 2, Scale(36));
+        Move(IDC_FAN_CURRENT,
+             x + inner + Scale(166), y + Scale(51),
+             width - inner * 2 - Scale(166), Scale(24));
+
+        // 曲线编辑区：2 行 3 列
+        if (manualControlsVisible_)
+        {
+            const int editorTop = y + Scale(88);
+            const int rowGap = Scale(34);
+            const int cellWidth = (width - inner * 2 - Scale(2 * 12)) / 3;
+            for (int i = 0; i < 6; ++i)
+            {
+                const int col = i % 3;
+                const int row = i / 3;
+                const int cellX = x + inner + col * (cellWidth + Scale(12));
+                const int cellY = editorTop + row * rowGap;
+                Move(kCurveLabelIds[i], cellX, cellY, Scale(50), Scale(24));
+                Move(kCurveEditIds[i], cellX + Scale(52), cellY, Scale(60), Scale(24));
+            }
+        }
+
+        // 应用按钮位置：自定义模式下移，避免和编辑区重叠
+        const int applyY = manualControlsVisible_ ? (y + Scale(178)) : (y + Scale(92));
+        Move(IDC_FAN_APPLY, x + inner, applyY, Scale(104), Scale(34));
+
+        // 提示文字：自定义模式下移
+        const int hintY = manualControlsVisible_ ? (y + Scale(228)) : (y + Scale(139));
+        Move(IDC_FAN_HINT, x + inner, hintY, width - inner * 2, Scale(36));
+
+        (void)height;
     }
 
     void DrawCard(HDC dc, const RECT& rect)
     {
-        if (rect.bottom <= 0 || rect.top >= contentHeight_)
-        {
-            return;
-        }
+        if (rect.bottom <= 0 || rect.top >= contentHeight_) return;
         HPEN pen = CreatePen(PS_SOLID, 1, kBorder);
         HGDIOBJ oldPen = SelectObject(dc, pen);
         HGDIOBJ oldBrush = SelectObject(dc, cardBrush_);
@@ -927,6 +1045,122 @@ private:
         SelectObject(dc, oldBrush);
         SelectObject(dc, oldPen);
         DeleteObject(pen);
+    }
+
+    void DrawFanCurveChart(HDC dc)
+    {
+        if (curveCard_.right <= curveCard_.left ||
+            curveCard_.bottom <= curveCard_.top) return;
+        if (curveCard_.bottom <= 0 || curveCard_.top >= contentHeight_) return;
+
+        const int pad = Scale(16);
+        const int titleArea = Scale(20);
+        const int hintArea = Scale(40);
+        const int axisLabelLeft = Scale(40);
+        const int axisLabelBottom = Scale(24);
+
+        RECT chart{};
+        chart.left = curveCard_.left + pad + axisLabelLeft;
+        chart.right = curveCard_.right - pad - Scale(12);
+        chart.top = curveCard_.top + pad + titleArea;
+        chart.bottom = curveCard_.bottom - hintArea - axisLabelBottom;
+        if (chart.right <= chart.left + Scale(20) ||
+            chart.bottom <= chart.top + Scale(20)) return;
+
+        // X 轴：40~90°C
+        const double tempMin = 40.0;
+        const double tempMax = 90.0;
+        const double pctMin = 0.0;
+        const double pctMax = 100.0;
+
+        auto tempToX = [&](double t) -> int {
+            const double ratio = (t - tempMin) / (tempMax - tempMin);
+            return chart.left + static_cast<int>(ratio * (chart.right - chart.left) + 0.5);
+        };
+        auto pctToY = [&](double p) -> int {
+            const double ratio = (p - pctMin) / (pctMax - pctMin);
+            return chart.bottom - static_cast<int>(ratio * (chart.bottom - chart.top) + 0.5);
+        };
+
+        // 网格
+        HPEN gridPen = CreatePen(PS_DOT, 1, kCurveGrid);
+        HGDIOBJ oldPen = SelectObject(dc, gridPen);
+        for (int t = 40; t <= 90; t += 10)
+        {
+            const int x = tempToX(static_cast<double>(t));
+            MoveToEx(dc, x, chart.top, nullptr);
+            LineTo(dc, x, chart.bottom);
+        }
+        for (int p = 0; p <= 100; p += 20)
+        {
+            const int y = pctToY(static_cast<double>(p));
+            MoveToEx(dc, chart.left, y, nullptr);
+            LineTo(dc, chart.right, y);
+        }
+        SelectObject(dc, oldPen);
+        DeleteObject(gridPen);
+
+        // 坐标轴
+        HPEN axisPen = CreatePen(PS_SOLID, 1, kCurveAxis);
+        oldPen = SelectObject(dc, axisPen);
+        MoveToEx(dc, chart.left, chart.top, nullptr);
+        LineTo(dc, chart.left, chart.bottom);
+        LineTo(dc, chart.right, chart.bottom);
+        SelectObject(dc, oldPen);
+        DeleteObject(axisPen);
+
+        // 数据点：从当前显示的曲线取
+        const auto percents = GetDisplayedPercents();
+        std::array<POINT, 6> points{};
+        for (int i = 0; i < 6; ++i)
+        {
+            points[i].x = tempToX(kCurveTemperatures[i]);
+            points[i].y = pctToY(static_cast<double>(percents[i]));
+        }
+
+        HPEN curvePen = CreatePen(PS_SOLID, 2, kAccent);
+        oldPen = SelectObject(dc, curvePen);
+        Polyline(dc, points.data(), static_cast<int>(points.size()));
+        SelectObject(dc, oldPen);
+        DeleteObject(curvePen);
+
+        HBRUSH pointBrush = CreateSolidBrush(kAccent);
+        HGDIOBJ oldBrush = SelectObject(dc, pointBrush);
+        const int radius = std::max(2, Scale(4));
+        for (const POINT& pt : points)
+        {
+            Ellipse(dc, pt.x - radius, pt.y - radius, pt.x + radius, pt.y + radius);
+        }
+        SelectObject(dc, oldBrush);
+        DeleteObject(pointBrush);
+
+        // 标签
+        HFONT labelFont = MakeFont(9, FW_NORMAL);
+        HGDIOBJ oldFont = SelectObject(dc, labelFont);
+        SetBkMode(dc, TRANSPARENT);
+        SetTextColor(dc, kMuted);
+
+        for (int t = 40; t <= 90; t += 10)
+        {
+            wchar_t buffer[16]{};
+            _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"%d°C", t);
+            const int x = tempToX(static_cast<double>(t));
+            RECT textRect{x - Scale(20), chart.bottom + Scale(4),
+                          x + Scale(20), chart.bottom + Scale(22)};
+            DrawTextW(dc, buffer, -1, &textRect, DT_CENTER | DT_SINGLELINE | DT_TOP);
+        }
+        for (int p = 0; p <= 100; p += 20)
+        {
+            wchar_t buffer[16]{};
+            _snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"%d%%", p);
+            const int y = pctToY(static_cast<double>(p));
+            RECT textRect{chart.left - axisLabelLeft, y - Scale(9),
+                          chart.left - Scale(6), y + Scale(9)};
+            DrawTextW(dc, buffer, -1, &textRect, DT_RIGHT | DT_SINGLELINE | DT_VCENTER);
+        }
+
+        SelectObject(dc, oldFont);
+        DeleteObject(labelFont);
     }
 
     void Paint()
@@ -943,33 +1177,22 @@ private:
         DrawCard(buffer, statusCard_);
         DrawCard(buffer, profileCard_);
         DrawCard(buffer, fanCard_);
-        for (const RECT& rect : tempCards_)
-        {
-            DrawCard(buffer, rect);
-        }
-        for (const RECT& rect : powerCards_)
-        {
-            DrawCard(buffer, rect);
-        }
+        DrawCard(buffer, curveCard_);
+        DrawFanCurveChart(buffer);
+        for (const RECT& rect : tempCards_) DrawCard(buffer, rect);
+        for (const RECT& rect : powerCards_) DrawCard(buffer, rect);
 
         HBRUSH accent = CreateSolidBrush(statusColor_);
-        RECT marker{
-            statusCard_.left,
-            statusCard_.top + Scale(14),
-            statusCard_.left + Scale(4),
-            statusCard_.bottom - Scale(14)};
+        RECT marker{statusCard_.left,
+                    statusCard_.top + Scale(14),
+                    statusCard_.left + Scale(4),
+                    statusCard_.bottom - Scale(14)};
         FillRect(buffer, &marker, accent);
         DeleteObject(accent);
-        BitBlt(
-            dc,
-            paint.rcPaint.left,
-            paint.rcPaint.top,
-            paint.rcPaint.right - paint.rcPaint.left,
-            paint.rcPaint.bottom - paint.rcPaint.top,
-            buffer,
-            paint.rcPaint.left,
-            paint.rcPaint.top,
-            SRCCOPY);
+        BitBlt(dc, paint.rcPaint.left, paint.rcPaint.top,
+               paint.rcPaint.right - paint.rcPaint.left,
+               paint.rcPaint.bottom - paint.rcPaint.top,
+               buffer, paint.rcPaint.left, paint.rcPaint.top, SRCCOPY);
         SelectObject(buffer, oldBitmap);
         DeleteObject(bitmap);
         DeleteDC(buffer);
@@ -1018,10 +1241,7 @@ private:
 
     void ApplyProfile()
     {
-        if (worker_ == nullptr)
-        {
-            return;
-        }
+        if (worker_ == nullptr) return;
         std::uint32_t profile = RADXA_SVC_PROFILE_QUIET;
         if (IsDlgButtonChecked(window_, IDC_PROFILE_PERFORMANCE) == BST_CHECKED)
         {
@@ -1031,10 +1251,8 @@ private:
         {
             return;
         }
-
         if (snapshot_.FanValid && snapshot_.FanMode != RADXA_SVC_FAN_CONTROL_AUTO &&
-            MessageBoxW(
-                window_,
+            MessageBoxW(window_,
                 Localize(IDS_CONFIRM_PROFILE).c_str(),
                 Localize(IDS_CONFIRM_TITLE).c_str(),
                 MB_ICONINFORMATION | MB_OKCANCEL) != IDOK)
@@ -1048,27 +1266,32 @@ private:
 
     void ApplyFan()
     {
-        if (worker_ == nullptr)
-        {
-            return;
-        }
+        if (worker_ == nullptr) return;
         const int selection = static_cast<int>(
             SendDlgItemMessageW(window_, IDC_FAN_MODE, CB_GETCURSEL, 0, 0));
-        const std::uint32_t mode = ComboToFanMode(selection);
-        const int percent = static_cast<int>(
-            SendDlgItemMessageW(window_, IDC_FAN_SLIDER, TBM_GETPOS, 0, 0));
-        const std::uint32_t raw = static_cast<std::uint32_t>(
-            (percent * static_cast<int>(RADXA_SVC_FAN_PWM_MAX) + 50) / 100);
+
+        if (selection == 1)  // 全速
+        {
+            worker_->SetFan(RADXA_SVC_FAN_CONTROL_FULL_SPEED, 0);
+        }
+        else if (selection == 2)  // 自定义
+        {
+            customPercents_ = ReadCurveEditors();
+            SaveCustomCurvePercents(customPercents_);
+            worker_->SetFanCurve(BuildCurveFromPercents(customPercents_));
+            worker_->SetFan(RADXA_SVC_FAN_CONTROL_AUTO, 0);
+        }
+        else  // 自动
+        {
+            worker_->SetFanCurve(DeviceWorker::kDefaultFanCurve);
+            worker_->SetFan(RADXA_SVC_FAN_CONTROL_AUTO, 0);
+        }
         fanDirty_ = false;
-        worker_->SetFan(mode, raw);
     }
 
     void BeginClose()
     {
-        if (closing_)
-        {
-            return;
-        }
+        if (closing_) return;
         closing_ = true;
         SetControlText(window_, IDC_NOTICE, Localize(IDS_CLOSE_PENDING));
         EnableWindow(window_, FALSE);
@@ -1143,9 +1366,8 @@ private:
                 }
                 else if (fanSelectionBeforeDropdown_ >= 0)
                 {
-                    SendDlgItemMessageW(
-                        window_, IDC_FAN_MODE, CB_SETCURSEL,
-                        fanSelectionBeforeDropdown_, 0);
+                    SendDlgItemMessageW(window_, IDC_FAN_MODE, CB_SETCURSEL,
+                                        fanSelectionBeforeDropdown_, 0);
                 }
                 fanSelectionCommitted_ = false;
             }
@@ -1161,16 +1383,21 @@ private:
             {
                 ApplyFan();
             }
+            else if (notification == EN_CHANGE)
+            {
+                // 编辑框改动 → 实时更新曲线图
+                for (int editId : kCurveEditIds)
+                {
+                    if (id == editId)
+                    {
+                        InvalidateRect(window_, &curveCard_, FALSE);
+                        break;
+                    }
+                }
+            }
             return 0;
         }
         case WM_HSCROLL:
-            if (reinterpret_cast<HWND>(lParam) == GetDlgItem(window_, IDC_FAN_SLIDER))
-            {
-                fanDirty_ = true;
-                const int percent = static_cast<int>(
-                    SendDlgItemMessageW(window_, IDC_FAN_SLIDER, TBM_GETPOS, 0, 0));
-                SetControlText(window_, IDC_FAN_PERCENT, FormatPercent(percent));
-            }
             return 0;
         case WM_VSCROLL:
             HandleVerticalScroll(wParam);
@@ -1185,11 +1412,8 @@ private:
         case WM_DPICHANGED:
         {
             const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
-            SetWindowPos(
-                window_,
-                nullptr,
-                suggested->left,
-                suggested->top,
+            SetWindowPos(window_, nullptr,
+                suggested->left, suggested->top,
                 suggested->right - suggested->left,
                 suggested->bottom - suggested->top,
                 SWP_NOACTIVATE | SWP_NOZORDER);
@@ -1216,25 +1440,24 @@ private:
             SetBkMode(dc, OPAQUE);
             SetBkColor(dc, IsCardStaticControl(id) ? kCard : kBackground);
             COLORREF color = kText;
-            if (id == IDC_STATUS_TITLE)
-            {
-                color = statusColor_;
-            }
+            if (id == IDC_STATUS_TITLE) color = statusColor_;
             else if (id == IDC_PROFILE_HINT || id == IDC_FAN_HINT ||
                      id == IDC_POWER1_DETAIL || id == IDC_POWER2_DETAIL ||
-                     id == IDC_POWER_SYSTEM_DETAIL)
-            {
+                     id == IDC_POWER_SYSTEM_DETAIL || id == IDC_FAN_CURVE_HINT)
                 color = kMuted;
-            }
-            else if (id == IDC_NOTICE)
-            {
-                color = noticeColor_;
-            }
+            else if (id == IDC_NOTICE) color = noticeColor_;
             SetTextColor(dc, color);
             return reinterpret_cast<LRESULT>(
                 IsCardStaticControl(id) ? cardBrush_ : backgroundBrush_);
         }
         case WM_CTLCOLORBTN:
+        {
+            HDC dc = reinterpret_cast<HDC>(wParam);
+            SetBkColor(dc, kCard);
+            SetTextColor(dc, kText);
+            return reinterpret_cast<LRESULT>(cardBrush_);
+        }
+        case WM_CTLCOLOREDIT:
         {
             HDC dc = reinterpret_cast<HDC>(wParam);
             SetBkColor(dc, kCard);
@@ -1248,10 +1471,7 @@ private:
             ApplySnapshot();
             return 0;
         case WM_APP_WORKER_STOPPED:
-            if (shutdownThread_.joinable())
-            {
-                shutdownThread_.join();
-            }
+            if (shutdownThread_.joinable()) shutdownThread_.join();
             DestroyWindow(window_);
             return 0;
         case WM_CLOSE:
@@ -1289,8 +1509,10 @@ private:
     RECT statusCard_{};
     RECT profileCard_{};
     RECT fanCard_{};
+    RECT curveCard_{};
     std::array<RECT, 2> tempCards_{};
     std::array<RECT, 3> powerCards_{};
+    std::array<int, 6> customPercents_ = kDefaultCurvePercents;
 };
 
 int WINAPI wWinMain(
